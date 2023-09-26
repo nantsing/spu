@@ -1,21 +1,20 @@
----
-name: SPU Issue Template
-description: To report any SPU related issue please use this template.
+name: SPU Bug Report Template
+description: To report any SPU related bug
+title: "[Bug]: "
 body:
   - type: dropdown
     id: issue-type
     attributes:
       label: Issue Type
-      description: What type of issue would you like to report?
+      description: What type of bug would you like to report?
       multiple: false
       options:
-        - Bug
         - Build/Install
         - Performance
         - Support
-        - Feature Request
-        - Documentation Feature Request
-        - Documentation Bug
+        - Usability
+        - Documentation
+        - Currentness/Accuracy
         - Others
     validations:
       required: true
@@ -23,7 +22,7 @@ body:
     id: sub-area
     attributes:
       label: Modules Involved
-      description: What modules are involved in this issue?
+      description: Which modules are involved in this issue?
       multiple: true
       options:
         - MPC protocol
@@ -41,15 +40,15 @@ body:
       label: Have you reproduced the bug with SPU HEAD?
       description: It is strongly suggested that you have reproduced the bug
         with latest SPU code
-      options: [Yes, No]
+      options: ['Yes', 'No']
     validations:
       required: true
   - type: dropdown
-    id: installation-type
+    id: search
     attributes:
-      label: Installation Kind
-      description: SPU installed from
-      options: [source, binary]
+      label: Have you searched existing issues?
+      description: To prevent duplicated reports, it is strongly suggested that you search existing issues first.
+      options: ['Yes', 'No']
     validations:
       required: true
   - type: input
@@ -58,23 +57,23 @@ body:
       label: SPU Version
       description: pip version if installed from package, commit id if build
         from source
-      placeholder: e.g., spu 0.3.2b12
+      placeholder: e.g., spu 0.5.0b0
     validations:
       required: true
   - type: input
     id: OS
     attributes:
       label: OS Platform and Distribution
-      placeholder: e.g., Linux Ubuntu 16.04
+      placeholder: e.g., Linux Ubuntu 22.04
     validations:
-      required: false
+      required: true
   - type: input
     id: Python
     attributes:
       label: Python Version
-      placeholder: e.g., 3.8
+      placeholder: e.g., 3.9
     validations:
-      required: false
+      required: true
   - type: input
     id: Compiler
     attributes:

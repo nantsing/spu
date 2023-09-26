@@ -35,9 +35,22 @@ py_library(
 py_library(
     name = "ridge",
     srcs = ["ridge.py"],
+    deps = [
+        "//sml/utils:extmath",
+    ],
 )
 
 py_library(
     name = "pla",
     srcs = ["pla.py"],
+)
+
+py_binary(
+    name = "glm",
+    srcs = ["glm.py"],
+    deps = [
+        "//sml/linear_model/utils:link",
+        "//sml/linear_model/utils:loss",
+        "//sml/linear_model/utils:solver",
+    ],
 )

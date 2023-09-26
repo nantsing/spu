@@ -37,7 +37,7 @@ inline std::ostream& operator<<(std::ostream& os,
 }
 
 inline std::ostream& operator<<(std::ostream& os,
-                                const absl::Span<int64_t const>& indices) {
+                                absl::Span<int64_t const> indices) {
   os << fmt::format("{{{}}}", fmt::join(indices, ","));
   return os;
 }
@@ -47,7 +47,7 @@ inline std::ostream& operator<<(std::ostream& os,
 namespace spu {
 namespace internal {
 
-inline void variadicToStringImpl(std::stringstream& ss) {}
+inline void variadicToStringImpl(std::stringstream&) {}
 
 template <typename T>
 void variadicToStringImpl(std::stringstream& ss, const T& t) {

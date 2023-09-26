@@ -236,12 +236,12 @@ void removeValue(SymbolScope *scope, mlir::Value key,
 }
 
 //
-#define STANDARD_UNARY_OP_EXEC_IMPL(OpName, KernelName)                     \
-  void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope, \
-               mlir::pphlo::OpName &op, const ExecutionOptions &opts) {     \
-    const auto in = lookupValue(sscope, op.getOperand(), opts);             \
-    auto ret = kernel::hlo::KernelName(sctx, in);                           \
-    addValue(sscope, op.getResult(), std::move(ret), opts);                 \
+#define STANDARD_UNARY_OP_EXEC_IMPL(OpName, KernelName)                 \
+  void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,     \
+               mlir::pphlo::OpName &op, const ExecutionOptions &opts) { \
+    const auto in = lookupValue(sscope, op.getOperand(), opts);         \
+    auto ret = kernel::hlo::KernelName(sctx, in);                       \
+    addValue(sscope, op.getResult(), std::move(ret), opts);             \
   }
 
 STANDARD_UNARY_OP_EXEC_IMPL(ReciprocalOp, Reciprocal)
@@ -265,7 +265,7 @@ STANDARD_UNARY_OP_EXEC_IMPL(CosineOp, Cosine)
 #undef STANDARD_UNARY_OP_EXEC_IMPL
 
 #define STANDARD_BINARY_OP_EXEC_IMPL(OpName, KernelName)                      \
-  void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,   \
+  void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,           \
                mlir::pphlo::OpName &op, const ExecutionOptions &opts) {       \
     addValue(                                                                 \
         sscope, op.getResult(),                                               \
@@ -295,7 +295,7 @@ STANDARD_BINARY_OP_EXEC_IMPL(ShiftRightLogicalOp, Rshift)
 
 #undef STANDARD_BINARY_OP_EXEC_IMPL
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::MulOp &op, const ExecutionOptions &opts) {
   auto smallConst = op.getRhs().getDefiningOp<mlir::pphlo::ConstantOp>();
   auto multiplier = op.getLhs();
@@ -350,7 +350,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::DotOp &op, const ExecutionOptions &opts) {
   auto ret = kernel::hlo::Dot(sctx, lookupValue(sscope, op.getLhs(), opts),
                               lookupValue(sscope, op.getRhs(), opts));
@@ -362,7 +362,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::DotGeneralOp &op, const ExecutionOptions &opts) {
   auto dnum = op.getDotDimensionNumbers();
   // Should in order
@@ -417,7 +417,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   addValue(sscope, op.getResult(), std::move(ret), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ConvolutionOp &op, const ExecutionOptions &opts) {
   const auto &dnums = op.getDimensionNumbers();
   const size_t num_spatial_dims = dnums.getOutputSpatialDimensions().size();
@@ -462,7 +462,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   addValue(sscope, op.getResult(), std::move(result), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::DynamicUpdateSliceOp &op,
              const ExecutionOptions &opts) {
   // Basic idea here, get a ref slice and update the whole slice..
@@ -481,7 +481,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
       opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::DynamicSliceOp &op, const ExecutionOptions &opts) {
   // Start indices
   auto iter = op.getSliceSizes().getValues<int64_t>();
@@ -498,7 +498,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::GatherOp &op, const ExecutionOptions &opts) {
   // If input is empty, short circuit
   auto operand = lookupValue(sscope, op.getOperand(), opts);
@@ -573,6 +573,32 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
 }
 
 void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+             mlir::pphlo::SimpleSortOp &op, const ExecutionOptions &opts) {
+  auto sort_dim = op.getDimension();
+  std::vector<spu::Value> inputs(op->getNumOperands());
+  for (size_t idx = 0; idx < inputs.size(); ++idx) {
+    inputs[idx] = lookupValue(sscope, op->getOperand(idx), opts);
+  }
+
+  kernel::hal::SortDirection direction;
+  if (op.getSortDirectionAttr().getInt() ==
+      static_cast<int>(mlir::pphlo::SortDirection::ASC)) {
+    direction = kernel::hal::SortDirection::Ascending;
+  } else if (op.getSortDirectionAttr().getInt() ==
+             static_cast<int>(mlir::pphlo::SortDirection::DES)) {
+    direction = kernel::hal::SortDirection::Descending;
+  } else {
+    SPU_THROW("Should not reach here");
+  }
+
+  auto ret = kernel::hlo::SimpleSort(sctx, inputs, sort_dim, direction);
+
+  for (int64_t idx = 0; idx < op->getNumResults(); ++idx) {
+    addValue(sscope, op->getResult(idx), ret[idx], opts);
+  }
+}
+
+void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::SelectAndScatterOp &op,
              const ExecutionOptions &opts) {
   auto operand = lookupValue(sscope, op.getOperand(), opts);
@@ -609,7 +635,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   addValue(sscope, op.getResult(), std::move(ret), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::MaxPoolScatterOp &op, const ExecutionOptions &opts) {
   auto scatter_indices = lookupValue(sscope, op.getScatterIndices(), opts);
   auto update = lookupValue(sscope, op.getUpdate(), opts);
@@ -698,7 +724,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   }
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::IotaOp &op, const ExecutionOptions &opts) {
   const auto &ret_type =
       op.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
@@ -726,7 +752,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   addValue(sscope, op.getOutput(), std::move(iota_ret), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::RemOp &op, const ExecutionOptions &opts) {
   // FIXME: When hal has a remainder, use that
   auto lhs = lookupValue(sscope, op.getLhs(), opts);
@@ -736,7 +762,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   addValue(sscope, op.getResult(), std::move(ret), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::TransposeOp &op, const ExecutionOptions &opts) {
   Axes permu;
   convertDenseIntElementAttr(op.getPermutation(), permu);
@@ -747,7 +773,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::BroadcastOp &op, const ExecutionOptions &opts) {
   auto to_shape = op.getType().dyn_cast<mlir::RankedTensorType>().getShape();
   Axes in_dims;
@@ -759,7 +785,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
       opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ReshapeOp &op, const ExecutionOptions &opts) {
   auto to_shape = op.getType().dyn_cast<mlir::RankedTensorType>().getShape();
   addValue(sscope, op.getResult(),
@@ -768,7 +794,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ConcatenateOp &op, const ExecutionOptions &opts) {
   std::vector<spu::Value> values(op->getNumOperands());
 
@@ -781,7 +807,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            kernel::hlo::Concatenate(sctx, values, op.getDimension()), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::SliceOp &op, const ExecutionOptions &opts) {
   Index start;
   Index end;
@@ -795,7 +821,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::PadOp &op, const ExecutionOptions &opts) {
   const auto &operand = lookupValue(sscope, op.getOperand(), opts);
   const size_t operand_rank = operand.shape().size();
@@ -822,7 +848,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ReverseOp &op, const ExecutionOptions &opts) {
   Axes dims;
   convertDenseIntElementAttr(op.getDimensions(), dims);
@@ -929,7 +955,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   }
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ArgMaxOp &op, const ExecutionOptions &opts) {
   Shape window_shape;
   convertDenseIntElementAttr(op.getWindowDimensions(), window_shape);
@@ -972,7 +998,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   addValue(sscope, op.getResult(1), ret.second, opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::SelectOp &op, const ExecutionOptions &opts) {
   auto pred = lookupValue(sscope, op.getPred(), opts);
 
@@ -983,7 +1009,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            kernel::hlo::Select(sctx, pred, on_true, on_false), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::RngOp &op, const ExecutionOptions &opts) {
   auto to_shape = op.getType().dyn_cast<mlir::RankedTensorType>().getShape();
   addValue(
@@ -993,7 +1019,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
       opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ConvertOp &op, const ExecutionOptions &opts) {
   mlir::pphlo::TypeTools tool;
   auto dst_dtype = getDtypeFromMlirType(op.getType());
@@ -1014,7 +1040,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   addValue(sscope, op.getResult(), casted, opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::PreferAOp &op, const ExecutionOptions &opts) {
   auto in = lookupValue(sscope, op.getOperand(), opts);
   if (sctx->config().protocol() == ProtocolKind::CHEETAH) {
@@ -1028,13 +1054,13 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   addValue(sscope, op.getResult(), kernel::hlo::Add(sctx, in, k0), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::SignOp &op, const ExecutionOptions &opts) {
   auto in = lookupValue(sscope, op.getOperand(), opts);
   addValue(sscope, op.getResult(), kernel::hlo::Sign(sctx, in), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::BitcastConvertOp &op, const ExecutionOptions &opts) {
   const auto &in_type =
       op.getOperand().getType().dyn_cast<mlir::RankedTensorType>();
@@ -1054,7 +1080,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
       opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ConstantOp &op, const ExecutionOptions &opts) {
   const auto &val = op.getValue();
   const auto &dea = val.dyn_cast<mlir::DenseElementsAttr>();
@@ -1120,7 +1146,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   }
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::EpsilonOp &op, const ExecutionOptions &opts) {
   auto e = kernel::hlo::Epsilon(sctx, getDtypeFromMlirType(op.getType()));
   auto shape =
@@ -1129,7 +1155,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ClampOp &op, const ExecutionOptions &opts) {
   addValue(sscope, op.getResult(),
            kernel::hlo::Clamp(sctx, lookupValue(sscope, op.getOperand(), opts),
@@ -1138,7 +1164,7 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
            opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::CustomCallOp &op, const ExecutionOptions &opt) {
   std::vector<Value> inputs(op->getNumOperands());
   for (size_t idx = 0; idx < inputs.size(); ++idx) {
@@ -1151,12 +1177,12 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   }
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::DbgPrintOp &op, const ExecutionOptions &opts) {
   kernel::hal::dbg_print(sctx, lookupValue(sscope, op.getOperand(), opts));
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *, SymbolScope *sscope,
              mlir::pphlo::FreeOp &op, const ExecutionOptions &opts) {
   if (opts.do_parallel) {
     // Think about the following case
@@ -1175,29 +1201,29 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
   removeValue(sscope, op.getOperand(), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::RealOp &op, const ExecutionOptions &opts) {
   auto v = lookupValue(sscope, op.getOperand(), opts);
   addValue(sscope, op.getResult(), kernel::hlo::Real(sctx, v), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ImagOp &op, const ExecutionOptions &opts) {
   auto v = lookupValue(sscope, op.getOperand(), opts);
   addValue(sscope, op.getResult(), kernel::hlo::Imag(sctx, v), opts);
 }
 
-void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
              mlir::pphlo::ComplexOp &op, const ExecutionOptions &opts) {
   auto r = lookupValue(sscope, op.getLhs(), opts);
   auto i = lookupValue(sscope, op.getRhs(), opts);
   addValue(sscope, op.getResult(), kernel::hlo::Complex(sctx, r, i), opts);
 }
 
-#define DEFINE_UNIMPLEMENTED_OP(OpName)                                     \
-  void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope, \
-               mlir::pphlo::OpName &, const ExecutionOptions &opts) {       \
-    SPU_THROW("Lowered op should not occur at backend");                    \
+#define DEFINE_UNIMPLEMENTED_OP(OpName)                           \
+  void execute(OpExecutor *, SPUContext *, SymbolScope *,         \
+               mlir::pphlo::OpName &, const ExecutionOptions &) { \
+    SPU_THROW("Lowered op should not occur at backend");          \
   }
 
 DEFINE_UNIMPLEMENTED_OP(ReturnOp)
@@ -1300,7 +1326,6 @@ void PPHloExecutor::runKernelImpl(SPUContext *sctx, SymbolScope *sscope,
       >(this, sctx, sscope, op, opts);
 }
 
-void PPHloExecutor::checkType(mlir::Type mlir_type, const spu::Value &v) const {
-}
+void PPHloExecutor::checkType(mlir::Type, const spu::Value &) const {}
 
 }  // namespace spu::device::pphlo
